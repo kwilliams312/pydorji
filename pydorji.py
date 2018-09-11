@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 
-import pyserial
-
-class dorji:
+#import pyserial
+from fakeserial import Serial
+class Dorji:
     '''
     A class for managing the Dorji818 chip via serial
     '''
 
-    def __init__(self, **kwargs):
+    def __init__( self, **kwargs ):
         '''
         Set defaults
 
@@ -16,7 +16,6 @@ class dorji:
           Serial options:
             * baud - Baud rate string        | Default: "9600"
             * device - a device string       | Default: "/dev/ttyS0"
-            * timeout - serial timeout       | Defautt: 2
 
           Frequency options:
             * tx - transmit frequency string | Default: "134.0000"
@@ -25,6 +24,11 @@ class dorji:
             * vol - volume integer 1-8       | Default: 1
             * gwb - Channel Space 1-25000    | Default: 0
 
+          Filter options:
+           * pre_de_emph -  ??               | Default: 1
+           * highpass - highpass filter      | Default: 1
+           * lowpass - lowpass filter        | Default: 1
+
           Continuous Tone-Coded Squelch System
             * tx_ctcss - transmit - string   | Default: "0000"
             * rx_ctcss - receive - string    | Default"0000"
@@ -32,54 +36,47 @@ class dorji:
         Also runs a handshake validation that the Dorji module is working.
         '''
 
-        if kwargs['tx']: self.settings['tx'] = kwargs['tx']
-        else: self.settings['tx'] = "134.0000"
+        self.settings = {
+            'tx' : "134.0000",
+            'rx' : "134.0000",
+            'tx_ctcss' : "0000",
+            'rx_ctcss' : "0000",
+            'gwb' : "0",
+            'sq' : "1",
+            'device' : "/dev/ttyS0",
+            'baud' : "9600",
+            'vol' : "1",
+            'pre_de_emph' : "1",
+            'highpass' : "1",
+            'lowpass' : "1",
+        }
 
-        if kwargs['rx']: self.settings['rx'] = kwargs['rx']
-        else: self.settings['rx'] = "134.0000"
+        self.settings.update(kwargs)
 
-        if kwargs['tx_ctcss']: self.settings['tx_ctcss'] = kwargs['tx_ctcss']
-        else: self.settings['tx_ctcss'] = "0000"
+        self.ser = Serial(self.settings['device'],
+                            self.settings['baud'], timeout=2)
 
-        if kwargs['rx_ctcss']: self.settings['rx_ctcss'] = kwargs['rx_ctcss']
-        else: self.settings['rx_ctcss'] = "0000"
+        if not self.ser.isOpen():
+            exit("error")
 
-        if kwargs['sq']: self.settings['sq'] = kwargs['sq']
-        else: self.settings['sq'] = "1"
+        if not self.send_atcommand('AT+DMOCONNECT\r\n'): exit("Handshake Error.")
+        if not self.set_dmosetgroup(): print("DMO Settings Error")
+        if not self.set_filter(): print("Filter Settings Error")
 
-        if kwargs['gwb']: self.settings['gwb'] = kwargs['gwb']
-        else: self.settings['gwb'] = "0"
-
-        if kwargs['vol']: self.settings['vol'] = kwargs['vol']
-        else: self.settings['vol'] = "1"
-
-        if kwargs['baud']: self.settings['baud'] = kwargs['baud']
-        else: self.settings['baud'] = "9600"
-
-        if kwargs['device']: self.settings['device'] = kwargs['device']
-        else: self.settings['device'] = "/dev/ttyS0"
-
-        if kwargs['timeout']: self.settings['timeout'] = kwargs['timeout']
-        else: self.settings['timeout'] = 2
-
-        self.ser = serial.Serial(self.settings['device'],
-                                 self.settings['baud'],
-                                 timeout=self.settings['timeout'])
-
-        if not self.send_command('AT+DMOCONNECT\r\n')
-            return False
-        else:
-            return True
 
     def __getitem__(self, key):
-        if key not in self.keys():
+        if key not in self.settings.keys():
             raise KeyError
         return self.settings[key]
 
+
     def __setitem__(self, key, value):
-        if key not in self.keys():
+        if key not in self.settings.keys():
             raise KeyError
+
         self.settings[key] = value
+        self.set_dmosetgroup()
+
 
     def scan_freq(self,freq):
         '''
@@ -106,6 +103,7 @@ class dorji:
         if self.ser and cmd:
             self.ser.write(cmd)
             r = self.ser.readline().split(":")[1].rstrip('\r\n')
+
             if r == "1": return False
             elif r == "0": return True
             else: return False
@@ -126,7 +124,7 @@ class dorji:
                 return False
 
 
-    def set_filer(self,filter):
+    def set_filter(self):
         '''
         Used to turn on/off Pre/de-emphasis, lowpass, and highpass filters
 
@@ -136,15 +134,15 @@ class dorji:
         Returns boolean
         '''
         if filter:
-            cmd = 'AT+SETFILTER={pre_de_emph},{highpass},{lowpass}\r\n'.format(**filter)
+            cmd = 'AT+SETFILTER={pre_de_emph},{highpass},{lowpass}\r\n'.format(**self.settings)
 
-            if self.send_atcommand(self.ser, cmd):
+            if self.send_atcommand(cmd):
                 return True
             else:
                 return False
 
 
-    def set_settingssetgroup(self,settings):
+    def set_dmosetgroup(self):
         '''
         Configure a group of Dorji module options.
 
@@ -153,9 +151,8 @@ class dorji:
 
         Returns a array with [0] - Status, [1] - Message
         '''
-        if settings:
-            cmd = 'AT+settingsSETGROUP={channel_space},{tx_freq},{rx_freq},{tx_ctcss},{sq},{rx_ctcss}\r\n'.format(**settings))
-            if self.send_atcommand(self.ser, cmd):
-                return True
-            else:
-                return False
+        cmd = 'AT+DMOSETGROUP={gwb},{tx},{rx},{tx_ctcss},{sq},{rx_ctcss}\r\n'.format(**self.settings)
+        if self.send_atcommand(cmd):
+            return True
+        else:
+            return False
