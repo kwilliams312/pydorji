@@ -1,5 +1,5 @@
 # pydorji
-A simple Dorji818 python module
+A simple Dorji 818 HAM Radio python module
 
 Based off the reference documents: [http://dorji.com/docs/data/DRA818V.pdf]
 
